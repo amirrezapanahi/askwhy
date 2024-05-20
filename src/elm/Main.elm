@@ -2,7 +2,6 @@ port module Main exposing (Model, Msg(..), initialModel, main)
 
 import Accessibility.Aria as Aria
 import Browser
-import Debug exposing (toString)
 import Html
     exposing
         ( Html
@@ -173,7 +172,7 @@ threadView thread =
     div [ Attr.class "flex flex-row justify-around" ]
         [ span
             []
-            [ text (toString thread.name) ]
+            [ text thread.name ]
         , button [ onClick (DeleteThread thread.name) ] [ text "×" ]
         ]
 
@@ -185,7 +184,7 @@ principleListView model =
 
 principleView : Principle -> Html Msg
 principleView principle =
-    div [] [ text (toString principle) ]
+    div [] [ text principle ]
 
 
 titleStyles : String
