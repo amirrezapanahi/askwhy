@@ -155,8 +155,8 @@ currentThreadView : Maybe Thread -> Html Msg
 currentThreadView maybeThread =
     case maybeThread of
         Just thread ->
-            div [ Attr.class "grid grid-cols-[auto_1fr]" ]
-                [ span [] [ text "Start here:" ], input [ Attr.value thread.name ] [] ]
+            div [ Attr.class "grid grid-cols-[1fr_auto_1fr]" ]
+                [ span [ Attr.class "text-right italic" ] [ text "Start here:" ], span [] [ text "" ], input [ Attr.value thread.name ] [] ]
 
         Nothing ->
             text ""
