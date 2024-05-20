@@ -14,8 +14,7 @@ import Html
         , text
         )
 import Html.Attributes as Attr
-import Html.Events exposing (onClick)
-
+import Html.Events exposing (onClick, onInput)
 
 
 -- CONSTANTS
@@ -33,6 +32,9 @@ ask_why_description =
 type Msg
     = CreateThread
     | DeleteThread String
+    | MakePrinciple Node
+    | RevokePrinciple Node
+    | UpdateThreadName String
 
 
 
@@ -156,10 +158,43 @@ currentThreadView maybeThread =
     case maybeThread of
         Just thread ->
             div [ Attr.class "grid grid-cols-[1fr_auto_1fr]" ]
-                [ span [ Attr.class "text-right italic" ] [ text "Start here:" ], span [] [ text "" ], input [ Attr.value thread.name ] [] ]
+                [ span
+                    [ Attr.class "text-right italic" ]
+                    [ text "Start here:" ]
+                , span [] [ text "" ]
+                , div [ Attr.class "flex flex-row justify-between bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 p-0 m-0" ]
+                    [ input
+                        [ Attr.value thread.name
+                        , Attr.class "bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
+                        , onInput (\value -> UpdateThreadName value)
+                        ]
+                        []
+                    , div
+                        [ Attr.class "has-tooltip" ]
+                        [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Make Principle" ]
+                        , button [ onClick (MakePrinciple thread.content) ] [ text "✦" ]
+                        ]
+                    , threadContentView thread.content
+                    ]
+                ]
 
         Nothing ->
             text ""
+
+
+renderReason : Reason -> Html Msg
+renderReason reason =
+    div [] []
+
+
+renderPrinciple : Principle -> Html Msg
+renderPrinciple principle =
+    div [] []
+
+
+threadContentView : Node -> Html Msg
+threadContentView node =
+    div [] []
 
 
 threadListView : Model -> Html Msg
@@ -240,6 +275,16 @@ update msg model =
 
             else
                 ( { model | threads = removeThreadFromList }, Cmd.none )
+
+        UpdateThreadName text ->
+            ({model | current_thread = Just({model.current_thread | name = text})}, Cmd.none)
+
+        MakePrinciple _ ->
+            Debug.todo "branch 'MakePrinciple _' not implemented"
+
+        RevokePrinciple _ ->
+            Debug.todo "branch 'RevokePrinciple _' not implemented"
+
 
 
 

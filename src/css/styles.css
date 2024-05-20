@@ -1,8 +1,17 @@
 @tailwind base;
 @tailwind components;
-@tailwind utilities;
-@tailwind variants;
 
 * {
   gap: .5em;
 }
+
+.tooltip {
+  @apply invisible absolute;
+}
+
+.has-tooltip:hover .tooltip {
+  @apply visible z-50;
+}
+
+@tailwind utilities;
+@tailwind variants;
