@@ -15,6 +15,8 @@ import Html
         )
 import Html.Attributes as Attr
 import Html.Events exposing (onClick, onInput)
+import Maybe exposing (map, withDefault)
+
 
 
 -- CONSTANTS
@@ -31,10 +33,11 @@ ask_why_description =
 
 type Msg
     = CreateThread
-    | DeleteThread String
+    | DeleteThread Int
     | MakePrinciple Node
     | RevokePrinciple Node
     | UpdateThreadName String
+    | MakeSelectedThread Thread
 
 
 
@@ -66,7 +69,8 @@ type alias Name =
 
 
 type alias Thread =
-    { name : String
+    { id : Int
+    , name : String
     , content : Node
     }
 
@@ -199,16 +203,37 @@ threadContentView node =
 
 threadListView : Model -> Html Msg
 threadListView model =
-    div [] (List.map threadView model.threads)
+    div []
+        (List.map
+            (\thread ->
+                threadView thread
+                    (case model.current_thread of
+                        Just current_thread ->
+                            current_thread.id == thread.id
+
+                        Nothing ->
+                            False
+                    )
+            )
+            model.threads
+        )
 
 
-threadView : Thread -> Html Msg
-threadView thread =
+threadView : Thread -> Bool -> Html Msg
+threadView thread isCurrent =
     div [ Attr.class "flex flex-row justify-around" ]
         [ span
-            []
+            [ Attr.class
+                (if isCurrent then
+                    "bg-slate-100 rounded"
+
+                 else
+                    ""
+                )
+            , onClick (MakeSelectedThread thread)
+            ]
             [ text thread.name ]
-        , button [ onClick (DeleteThread thread.name) ] [ text "×" ]
+        , button [ onClick (DeleteThread thread.id) ] [ text "×" ]
         ]
 
 
@@ -238,17 +263,30 @@ update msg model =
             --create an 'untitled thread'
             let
                 newThread =
-                    Thread "Untitled" (Node { value = Empty, next = Nothing })
+                    let
+                        latestThread : Maybe Thread
+                        latestThread =
+                            last model.threads
+
+                        latestThreadId : Int
+                        latestThreadId =
+                            latestThread
+                                |> Maybe.map (\thread -> thread.id)
+                                |> Maybe.withDefault 0
+
+                        -- Default ID if no thread is found
+                    in
+                    Thread (latestThreadId + 1) "Untitled" (Node { value = Empty, next = Nothing })
             in
             ( { model | current_thread = Just newThread, threads = newThread :: model.threads }, Cmd.none )
 
-        DeleteThread threadToDeleteName ->
+        DeleteThread threadToDeleteId ->
             let
-                currentThreadBeingDeleted : String -> Bool
-                currentThreadBeingDeleted name =
+                currentThreadBeingDeleted : Int -> Bool
+                currentThreadBeingDeleted id =
                     case model.current_thread of
                         Just thread ->
-                            if name == thread.name then
+                            if id == thread.id then
                                 True
 
                             else
@@ -261,11 +299,11 @@ update msg model =
                 removeThreadFromList =
                     List.filter
                         (\thread ->
-                            thread.name /= threadToDeleteName
+                            thread.id /= threadToDeleteId
                         )
                         model.threads
             in
-            if currentThreadBeingDeleted threadToDeleteName then
+            if currentThreadBeingDeleted threadToDeleteId then
                 ( { model
                     | current_thread = Nothing
                     , threads = removeThreadFromList
@@ -277,7 +315,28 @@ update msg model =
                 ( { model | threads = removeThreadFromList }, Cmd.none )
 
         UpdateThreadName text ->
-            ({model | current_thread = Just({model.current_thread | name = text})}, Cmd.none)
+            let
+                newCurrentThread : Maybe Thread
+                newCurrentThread =
+                    Maybe.map (\thread -> { thread | name = text }) model.current_thread
+
+                updateThreadName thread =
+                    case model.current_thread of
+                        Just currentThread ->
+                            if currentThread.id == thread.id then
+                                { thread | name = text }
+
+                            else
+                                thread
+
+                        Nothing ->
+                            thread
+
+                newThreads : List Thread
+                newThreads =
+                    List.map updateThreadName model.threads
+            in
+            ( { model | current_thread = newCurrentThread, threads = newThreads }, Cmd.none )
 
         MakePrinciple _ ->
             Debug.todo "branch 'MakePrinciple _' not implemented"
@@ -285,6 +344,8 @@ update msg model =
         RevokePrinciple _ ->
             Debug.todo "branch 'RevokePrinciple _' not implemented"
 
+        MakeSelectedThread thread ->
+            ( { model | current_thread = Just thread }, Cmd.none )
 
 
 
@@ -310,3 +371,14 @@ subscriptions _ =
 
 
 port changeTheme : String -> Cmd msg
+
+
+
+-- UTILITIES
+-- Define the `last` function
+
+
+last : List a -> Maybe a
+last list =
+    list
+        |> List.head
