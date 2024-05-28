@@ -15,6 +15,7 @@ import Html
         )
 import Html.Attributes as Attr
 import Html.Events exposing (onClick, onFocus, onInput)
+import List.Extra exposing (removeAt)
 import Maybe exposing (map, withDefault)
 
 
@@ -62,7 +63,11 @@ type alias Thread =
 
 
 type alias ThreadContent =
-    List (Maybe ( Ponder, String ))
+    List (Maybe Sequence)
+
+
+type alias Sequence =
+    ( Ponder, Maybe String )
 
 
 type Why
@@ -169,9 +174,10 @@ currentThreadView maybeThread =
 
 renderPonderAndWhy :
     Int
-    -> Maybe ( Ponder, String )
+    -> Int
+    -> Maybe ( Ponder, Maybe String )
     -> ( Html Msg, Html Msg ) -- (Ponder output, Why output)
-renderPonderAndWhy index maybeSequence =
+renderPonderAndWhy index length maybeSequence =
     case maybeSequence of
         Just ( ponder, why ) ->
             case ponder of
@@ -180,7 +186,7 @@ renderPonderAndWhy index maybeSequence =
                         [ input
                             [ Attr.value reason_text
                             , Attr.class "bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
-                            , onInput (\value -> GiveReason index (contentsLength model) value)
+                            , onInput (\value -> GiveReason index length value)
                             , onFocus (MakeSelectedNode index)
                             ]
                             []
@@ -190,7 +196,12 @@ renderPonderAndWhy index maybeSequence =
                             , button [ onClick (MakePrinciple ponder) ] [ text "✦" ]
                             ]
                         ]
-                    , renderWhy why
+                    , case why of
+                        Just x ->
+                            renderWhy x
+
+                        Nothing ->
+                            renderWhy ""
                     )
 
                 Empty ->
@@ -198,7 +209,7 @@ renderPonderAndWhy index maybeSequence =
                         [ input
                             [ Attr.value ""
                             , Attr.class "bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
-                            , onInput (\value -> GiveReason index value)
+                            , onInput (\value -> GiveReason index length value)
                             , onFocus (MakeSelectedNode index)
                             ]
                             []
@@ -211,7 +222,7 @@ renderPonderAndWhy index maybeSequence =
                         [ input
                             [ Attr.value principle_text
                             , Attr.class "bg-blue-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
-                            , onInput (\value -> GiveReason index value)
+                            , onInput (\value -> GiveReason index length value)
                             , onFocus (MakeSelectedNode index)
                             ]
                             []
@@ -241,7 +252,7 @@ threadContentView threadContent =
         (\index item ->
             let
                 ( ponderHtml, whyHtml ) =
-                    renderPonderAndWhy index item
+                    renderPonderAndWhy index (List.length threadContent) item
             in
             renderSequence ponderHtml whyHtml
         )
@@ -342,7 +353,7 @@ update msg model =
                     in
                     Thread (latestThreadId + 1)
                         "Untitled"
-                        [ Just ( Reason "", "Untitled" ) ]
+                        [ Just ( Reason "", Just "Untitled" ) ]
 
                 -- (Node { value = Why "Untitled", next = Nothing })
             in
@@ -383,13 +394,13 @@ update msg model =
                 ( { model | threads = removeThreadFromList }, Cmd.none )
 
         UpdateThreadName text ->
-            Debug.todo ""
+            ( model, Cmd.none )
 
         MakePrinciple _ ->
-            Debug.todo "branch 'MakePrinciple _' not implemented"
+            ( model, Cmd.none )
 
         RevokePrinciple _ ->
-            Debug.todo "branch 'RevokePrinciple _' not implemented"
+            ( model, Cmd.none )
 
         MakeSelectedNode index ->
             ( { model | currentNodeIdx = index }, Cmd.none )
@@ -397,31 +408,52 @@ update msg model =
         MakeSelectedThread thread ->
             ( { model | currentThread = Just thread }, Cmd.none )
 
-        GiveReason index contentsLength reasonText ->
+        GiveReason index length reasonText ->
             let
-                updatedTuple : ( Ponder, String )
+                updatedTuple : Sequence
                 updatedTuple =
-                    ( Reason reasonText, reasonText )
+                    ( Reason reasonText, Just reasonText )
 
                 updatedThreadContent : ThreadContent
                 updatedThreadContent =
                     case model.currentThread of
                         Just currentThread ->
-                            if index == 0 then
-                                Debug.todo ""
-
-                            else if index == (contentsLength - 1) then
+                            if index == (length - 1) && reasonText /= "" then
                                 List.append currentThread.content [ Just updatedTuple ]
 
+                            else if index /= 0 && reasonText == "" then
+                                removeAt index currentThread.content
+
                             else
-                                Debug.todo ""
+                                List.indexedMap
+                                    (\i item ->
+                                        if i == index then
+                                            Just updatedTuple
+
+                                        else
+                                            item
+                                    )
+                                    currentThread.content
 
                         Nothing ->
-                            Debug.todo "branch 'Nothing' not implemented"
+                            []
+
+                updatedName : String
+                updatedName =
+                    if index == 0 then
+                        reasonText
+
+                    else
+                        case model.currentThread of
+                            Just x ->
+                                x.name
+
+                            Nothing ->
+                                ""
 
                 newCurrentThread : Maybe Thread
                 newCurrentThread =
-                    Maybe.map (\thread -> { thread | content = updatedThreadContent, name = text }) model.currentThread
+                    Maybe.map (\thread -> { thread | content = updatedThreadContent, name = updatedName }) model.currentThread
 
                 updateThread : Thread -> Thread
                 updateThread thread =
@@ -445,11 +477,7 @@ update msg model =
                 newThreads =
                     List.map updateThread model.threads
             in
-            if index == 0 then
-                Debug.todo "asd"
-
-            else
-                ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
+            ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
 
 
 
@@ -508,13 +536,3 @@ threadSpacingStyle =
 flattenList : List (List a) -> List a
 flattenList nested =
     List.concat nested
-
-
-contentsLength : Model -> Int
-contentsLength model =
-    case model.currentThread of
-        Just currentThread ->
-            List.length currentThread.content
-
-        Nothing ->
-            0
