@@ -92,7 +92,6 @@ init flags =
     ( case Json.Decode.decodeValue decodeModel flags of
         Ok model ->
             model
-                |> Debug.log (Debug.toString model)
 
         Err _ ->
             initialModel
@@ -504,7 +503,7 @@ update msg model =
                         ( model, Cmd.none )
 
                 Empty ->
-                    Debug.todo "branch 'Empty' not implemented"
+                    ( model, Cmd.none )
 
         RevokePrinciple index ponder ->
             let
