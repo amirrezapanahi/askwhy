@@ -1,12 +1,15 @@
 import '../css/styles.css'
 import { Elm } from '../elm/Main.elm'
 
+var storedData = localStorage.getItem('data');
+var flags = storedData ? JSON.parse(storedData) : null;
+
 // Start the Elm application.
 const app = Elm.Main.init({
-  node: document.querySelector('main')
+  node: document.querySelector('main'),
+  flags: flags 
 })
 
-// Change between themes manually
-app.ports.changeTheme.subscribe(function (data) {
-  window.document.documentElement.setAttribute('data-theme', data)
+app.ports.setStorage.subscribe(function (data){
+  localStorage.setItem("data", JSON.stringify(data))
 })

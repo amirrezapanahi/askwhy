@@ -15,6 +15,8 @@ import Html
         )
 import Html.Attributes as Attr
 import Html.Events exposing (onClick, onFocus, onInput)
+import Json.Decode
+import Json.Encode
 import List.Extra exposing (removeAt)
 import Maybe exposing (map, withDefault)
 
@@ -82,35 +84,41 @@ type Ponder
 
 
 
--- type Node
---     = Node
---         { value : Ponder
---         , next : Maybe Node
---         }
 -- INIT
 
 
-initialModel : ( Model, Cmd Msg )
-initialModel =
-    ( { threads = []
-      , currentNodeIdx = 0
-      , currentThread = Nothing
-      , principles = []
-      }
+init : Json.Encode.Value -> ( Model, Cmd Msg )
+init flags =
+    ( case Json.Decode.decodeValue decodeModel flags of
+        Ok model ->
+            model
+                |> Debug.log (Debug.toString model)
+
+        Err _ ->
+            initialModel
     , Cmd.none
     )
+
+
+initialModel : Model
+initialModel =
+    { threads = []
+    , currentNodeIdx = 0
+    , currentThread = Nothing
+    , principles = []
+    }
 
 
 
 -- MAIN
 
 
-main : Program () Model Msg
+main : Program Json.Encode.Value Model Msg
 main =
     Browser.element
-        { init = \_ -> initialModel
+        { init = init
         , view = view
-        , update = update
+        , update = updateWithStorage
         , subscriptions = subscriptions
         }
 
@@ -480,7 +488,23 @@ update msg model =
                 newPrinciples =
                     List.append [ Tuple.first newSequence ] model.principles
             in
-            ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
+            case ponder of
+                Reason text ->
+                    if text /= "" then
+                        ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
+
+                    else
+                        ( model, Cmd.none )
+
+                Principle text ->
+                    if text /= "" then
+                        ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
+
+                    else
+                        ( model, Cmd.none )
+
+                Empty ->
+                    Debug.todo "branch 'Empty' not implemented"
 
         RevokePrinciple index ponder ->
             let
@@ -581,7 +605,25 @@ update msg model =
             let
                 updatedTuple : Sequence
                 updatedTuple =
-                    ( Reason reasonText, Just reasonText )
+                    let
+                        isPrinciple : String -> Bool
+                        isPrinciple text =
+                            List.any
+                                (\x ->
+                                    case x of
+                                        Principle principleText ->
+                                            text == principleText
+
+                                        _ ->
+                                            False
+                                )
+                                model.principles
+                    in
+                    if isPrinciple reasonText then
+                        ( Principle reasonText, Just reasonText )
+
+                    else
+                        ( Reason reasonText, Just reasonText )
 
                 updatedThreadContent : ThreadContent
                 updatedThreadContent =
@@ -671,7 +713,132 @@ subscriptions _ =
 -- PORTS
 
 
-port changeTheme : String -> Cmd msg
+port setStorage : Json.Encode.Value -> Cmd msg
+
+
+updateWithStorage : Msg -> Model -> ( Model, Cmd Msg )
+updateWithStorage msg oldModel =
+    let
+        ( newModel, cmds ) =
+            update msg oldModel
+    in
+    ( newModel
+    , Cmd.batch [ setStorage (encodeModel newModel), cmds ]
+    )
+
+
+encodePonder : Ponder -> Json.Encode.Value
+encodePonder ponder =
+    case ponder of
+        Principle str ->
+            Json.Encode.object
+                [ ( "type", Json.Encode.string "Principle" )
+                , ( "principle_value", Json.Encode.string str )
+                ]
+
+        Reason str ->
+            Json.Encode.object
+                [ ( "type", Json.Encode.string "Reason" )
+                , ( "reason_value", Json.Encode.string str )
+                ]
+
+        Empty ->
+            Json.Encode.object
+                [ ( "type", Json.Encode.string "Empty" ) ]
+
+
+encodeSequence : Sequence -> Json.Encode.Value
+encodeSequence ( ponder, maybeString ) =
+    Json.Encode.object
+        [ ( "ponder", encodePonder ponder )
+        , ( "why"
+          , case maybeString of
+                Just string ->
+                    Json.Encode.string string
+
+                Nothing ->
+                    Json.Encode.null
+          )
+        ]
+
+
+encodeMaybeSequence : Maybe Sequence -> Json.Encode.Value
+encodeMaybeSequence maybeSequence =
+    case maybeSequence of
+        Just sequence ->
+            encodeSequence sequence
+
+        Nothing ->
+            Json.Encode.null
+
+
+encodeThreadContent : ThreadContent -> Json.Encode.Value
+encodeThreadContent content =
+    Json.Encode.list encodeMaybeSequence content
+
+
+encodeThread : Thread -> Json.Encode.Value
+encodeThread thread =
+    Json.Encode.object
+        [ ( "id", Json.Encode.int thread.id )
+        , ( "name", Json.Encode.string thread.name )
+        , ( "content", encodeThreadContent thread.content )
+        ]
+
+
+encodeModel : Model -> Json.Encode.Value
+encodeModel model =
+    Json.Encode.object
+        [ ( "threads", Json.Encode.list encodeThread model.threads )
+        , ( "currentNodeIdx", Json.Encode.int model.currentNodeIdx )
+        , ( "currentThread"
+          , case model.currentThread of
+                Just currentThread ->
+                    encodeThread currentThread
+
+                Nothing ->
+                    Json.Encode.null
+          )
+        , ( "principles", Json.Encode.list encodePonder model.principles )
+        ]
+
+
+decodePonder : Json.Decode.Decoder Ponder
+decodePonder =
+    Json.Decode.oneOf
+        [ Json.Decode.map Principle (Json.Decode.field "principle_value" Json.Decode.string)
+        , Json.Decode.map Reason (Json.Decode.field "reason_value" Json.Decode.string)
+        , Json.Decode.succeed Empty
+        ]
+
+
+decodeSequence : Json.Decode.Decoder Sequence
+decodeSequence =
+    Json.Decode.map2 (\ponder why -> ( ponder, why ))
+        (Json.Decode.field "ponder" decodePonder)
+        (Json.Decode.field "why" (Json.Decode.nullable Json.Decode.string))
+
+
+decodeThreadContent : Json.Decode.Decoder ThreadContent
+decodeThreadContent =
+    Json.Decode.list (Json.Decode.nullable decodeSequence)
+
+
+decodeThread : Json.Decode.Decoder Thread
+decodeThread =
+    Json.Decode.map3 Thread
+        (Json.Decode.field "id" Json.Decode.int)
+        (Json.Decode.field "name" Json.Decode.string)
+        (Json.Decode.field "content" decodeThreadContent)
+
+
+decodeModel : Json.Decode.Decoder Model
+decodeModel =
+    Json.Decode.map4 Model
+        (Json.Decode.field "threads" (Json.Decode.list decodeThread))
+        (Json.Decode.field "currentNodeIdx" Json.Decode.int)
+        (Json.Decode.field "currentThread" (Json.Decode.nullable decodeThread))
+        (Json.Decode.field "principles" (Json.Decode.list decodePonder))
 
 
 
