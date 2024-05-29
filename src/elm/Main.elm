@@ -35,10 +35,10 @@ ask_why_description =
 type Msg
     = CreateThread
     | DeleteThread Int
-    | MakePrinciple Ponder
+    | MakePrinciple Int Ponder
     | RevokePrinciple Ponder
-    | UpdateThreadName String
-    | GiveReason Int Int String
+    | GiveReason Int String
+    | CreateNewSequence Thread
     | MakeSelectedThread Thread
     | MakeSelectedNode Int
 
@@ -147,8 +147,10 @@ view model =
                 [ span [ Attr.class ("bg-green-200 " ++ titleStyles) ] [ text "Current Thread" ]
                 , currentThreadView model.currentThread
                 ]
-            , div [ Attr.class "h-full bg-blue-200 w-1/5" ]
-                [ text "Principles" ]
+            , div [ Attr.class "h-full bg-blue-100 w-1/5" ]
+                [ span [ Attr.class titleStyles ] [ text "Principles" ]
+                , principleListView model
+                ]
             ]
         ]
 
@@ -164,7 +166,7 @@ currentThreadView maybeThread =
                         [ text "Start here:" ]
                      , span [] [ text "" ]
                      ]
-                        ++ threadContentView thread.content
+                        ++ threadContentView thread
                     )
                 ]
 
@@ -186,14 +188,14 @@ renderPonderAndWhy index length maybeSequence =
                         [ input
                             [ Attr.value reason_text
                             , Attr.class "bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
-                            , onInput (\value -> GiveReason index length value)
+                            , onInput (\value -> GiveReason index value)
                             , onFocus (MakeSelectedNode index)
                             ]
                             []
                         , div
                             [ Attr.class "has-tooltip" ]
                             [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Make Principle" ]
-                            , button [ onClick (MakePrinciple ponder) ] [ text "✦" ]
+                            , button [ onClick (MakePrinciple index ponder) ] [ text "✦" ]
                             ]
                         ]
                     , case why of
@@ -201,7 +203,7 @@ renderPonderAndWhy index length maybeSequence =
                             renderWhy x
 
                         Nothing ->
-                            renderWhy ""
+                            text ""
                     )
 
                 Empty ->
@@ -209,7 +211,7 @@ renderPonderAndWhy index length maybeSequence =
                         [ input
                             [ Attr.value ""
                             , Attr.class "bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
-                            , onInput (\value -> GiveReason index length value)
+                            , onInput (\value -> GiveReason index value)
                             , onFocus (MakeSelectedNode index)
                             ]
                             []
@@ -222,7 +224,7 @@ renderPonderAndWhy index length maybeSequence =
                         [ input
                             [ Attr.value principle_text
                             , Attr.class "bg-blue-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
-                            , onInput (\value -> GiveReason index length value)
+                            , onInput (\value -> GiveReason index value)
                             , onFocus (MakeSelectedNode index)
                             ]
                             []
@@ -239,24 +241,29 @@ renderPonderAndWhy index length maybeSequence =
             ( text "", text "" )
 
 
-threadContentView : ThreadContent -> List (Html Msg)
-threadContentView threadContent =
+threadContentView : Thread -> List (Html Msg)
+threadContentView thread =
     let
         renderSequence : Html Msg -> Html Msg -> List (Html Msg)
         renderSequence ponderHtml whyHtml =
             [ ponderHtml ]
                 ++ [ whyHtml ]
-                ++ [ span [] [ text " -> " ] ]
+                ++ [ div
+                        [ Attr.class "has-tooltip" ]
+                        [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Give Reason" ]
+                        , span [ Attr.class "opacity-50 hover:opacity-100 cursor-pointer", onClick (CreateNewSequence thread) ] [ text " → " ]
+                        ]
+                   ]
     in
     List.indexedMap
         (\index item ->
             let
                 ( ponderHtml, whyHtml ) =
-                    renderPonderAndWhy index (List.length threadContent) item
+                    renderPonderAndWhy index (List.length thread.content) item
             in
             renderSequence ponderHtml whyHtml
         )
-        threadContent
+        thread.content
         |> flattenList
 
 
@@ -393,11 +400,66 @@ update msg model =
             else
                 ( { model | threads = removeThreadFromList }, Cmd.none )
 
-        UpdateThreadName text ->
-            ( model, Cmd.none )
+        MakePrinciple index ponder ->
+            -- make sequence (Principle text, Just text)
+            let
+                newSequence : Sequence
+                newSequence =
+                    case ponder of
+                        Reason text ->
+                            ( Principle text, Just text )
 
-        MakePrinciple _ ->
-            ( model, Cmd.none )
+                        Principle text ->
+                            ( ponder, Just text )
+
+                        Empty ->
+                            ( ponder, Just "" )
+
+                -- update threadcontent with this sequence given the index
+                updatedThreadContent : ThreadContent
+                updatedThreadContent =
+                    case model.currentThread of
+                        Just currentThread ->
+                            List.indexedMap
+                                (\i item ->
+                                    if i == index then
+                                        Just newSequence
+
+                                    else
+                                        item
+                                )
+                                currentThread.content
+
+                        Nothing ->
+                            []
+
+                newCurrentThread : Maybe Thread
+                newCurrentThread =
+                    Maybe.map (\thread -> { thread | content = updatedThreadContent }) model.currentThread
+
+                updateThread : Thread -> Thread
+                updateThread thread =
+                    if index == thread.id then
+                        case newCurrentThread of
+                            Just x ->
+                                x
+
+                            Nothing ->
+                                thread
+
+                    else
+                        thread
+
+                newThreads : List Thread
+                newThreads =
+                    List.map updateThread model.threads
+
+                -- update thread with new thread content
+                newPrinciples : List Ponder
+                newPrinciples =
+                    List.append [ Tuple.first newSequence ] model.principles
+            in
+            ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
 
         RevokePrinciple _ ->
             ( model, Cmd.none )
@@ -408,7 +470,36 @@ update msg model =
         MakeSelectedThread thread ->
             ( { model | currentThread = Just thread }, Cmd.none )
 
-        GiveReason index length reasonText ->
+        CreateNewSequence currentThread ->
+            let
+                newList : ThreadContent
+                newList =
+                    List.append currentThread.content [ Just ( Reason "", Just "" ) ]
+
+                newCurrentThread : Maybe Thread
+                newCurrentThread =
+                    Maybe.map (\thread -> { thread | content = newList }) model.currentThread
+
+                updateThread : Thread -> Thread
+                updateThread thread =
+                    if currentThread.id == thread.id then
+                        case newCurrentThread of
+                            Just x ->
+                                x
+
+                            Nothing ->
+                                thread
+
+                    else
+                        thread
+
+                newThreads : List Thread
+                newThreads =
+                    List.map updateThread model.threads
+            in
+            ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
+
+        GiveReason index reasonText ->
             let
                 updatedTuple : Sequence
                 updatedTuple =
@@ -418,10 +509,7 @@ update msg model =
                 updatedThreadContent =
                     case model.currentThread of
                         Just currentThread ->
-                            if index == (length - 1) && reasonText /= "" then
-                                List.append currentThread.content [ Just updatedTuple ]
-
-                            else if index /= 0 && reasonText == "" then
+                            if index /= 0 && reasonText == "" then
                                 removeAt index currentThread.content
 
                             else
@@ -514,18 +602,6 @@ last : List a -> Maybe a
 last list =
     list
         |> List.head
-
-
-
--- getReason : Thread -> Maybe Ponder
--- getReason thread =
---     case thread.content of
---         Node { value, next } ->
---             case value of
---                 Reason r ->
---                     Just (Reason r)
---                 _ ->
---                     Nothing
 
 
 threadSpacingStyle : String
