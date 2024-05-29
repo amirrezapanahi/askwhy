@@ -646,7 +646,7 @@ update msg model =
             ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
 
         DeletePrinciple _ ->
-            Debug.todo "branch 'DeletePrinciple _' not implemented"
+            ( model, Cmd.none )
 
 
 
