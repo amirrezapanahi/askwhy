@@ -36,7 +36,8 @@ type Msg
     = CreateThread
     | DeleteThread Int
     | MakePrinciple Int Ponder
-    | RevokePrinciple Ponder
+    | RevokePrinciple Int Ponder
+    | DeletePrinciple Ponder
     | GiveReason Int String
     | CreateNewSequence Thread
     | MakeSelectedThread Thread
@@ -178,13 +179,14 @@ renderPonderAndWhy :
     Int
     -> Int
     -> Maybe ( Ponder, Maybe String )
-    -> ( Html Msg, Html Msg ) -- (Ponder output, Why output)
-renderPonderAndWhy index length maybeSequence =
+    -> ( Maybe Ponder, Html Msg, Html Msg ) -- (Ponder output, Why output)
+renderPonderAndWhy index _ maybeSequence =
     case maybeSequence of
         Just ( ponder, why ) ->
             case ponder of
                 Reason reason_text ->
-                    ( div [ Attr.class "grid grid-cols-[1fr_auto] bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 p-0 m-0" ]
+                    ( Just ponder
+                    , div [ Attr.class "grid grid-cols-[1fr_auto] bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 p-0 m-0" ]
                         [ input
                             [ Attr.value reason_text
                             , Attr.class "bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
@@ -207,7 +209,8 @@ renderPonderAndWhy index length maybeSequence =
                     )
 
                 Empty ->
-                    ( div [ Attr.class "grid grid-cols-[1fr_auto] bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 p-0 m-0" ]
+                    ( Just ponder
+                    , div [ Attr.class "grid grid-cols-[1fr_auto] bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 p-0 m-0" ]
                         [ input
                             [ Attr.value ""
                             , Attr.class "bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
@@ -220,7 +223,8 @@ renderPonderAndWhy index length maybeSequence =
                     )
 
                 Principle principle_text ->
-                    ( div [ Attr.class "grid grid-cols-[1fr_auto] bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 p-0 m-0" ]
+                    ( Just ponder
+                    , div [ Attr.class "grid grid-cols-[1fr_auto] bg-gray-100 rounded focus:outline-none focus:ring-0 border-0 p-0 m-0" ]
                         [ input
                             [ Attr.value principle_text
                             , Attr.class "bg-blue-100 rounded focus:outline-none focus:ring-0 border-0 px-2 py-0 m-0"
@@ -231,37 +235,50 @@ renderPonderAndWhy index length maybeSequence =
                         , div
                             [ Attr.class "has-tooltip" ]
                             [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Revoke Principle" ]
-                            , button [ onClick (RevokePrinciple ponder) ] [ text "↩" ]
+                            , button [ onClick (RevokePrinciple index ponder) ] [ text "↩" ]
                             ]
                         ]
                     , text ""
                     )
 
         Nothing ->
-            ( text "", text "" )
+            ( Nothing, text "", text "" )
 
 
 threadContentView : Thread -> List (Html Msg)
 threadContentView thread =
     let
-        renderSequence : Html Msg -> Html Msg -> List (Html Msg)
-        renderSequence ponderHtml whyHtml =
-            [ ponderHtml ]
-                ++ [ whyHtml ]
-                ++ [ div
+        renderSequence : Maybe Ponder -> Html Msg -> Html Msg -> List (Html Msg)
+        renderSequence maybePonder ponderHtml whyHtml =
+            ponderHtml
+                :: whyHtml
+                :: [ div
                         [ Attr.class "has-tooltip" ]
                         [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Give Reason" ]
-                        , span [ Attr.class "opacity-50 hover:opacity-100 cursor-pointer", onClick (CreateNewSequence thread) ] [ text " → " ]
+                        , span
+                            [ Attr.class "opacity-50 hover:opacity-100 cursor-pointer", onClick (CreateNewSequence thread) ]
+                            [ case maybePonder of
+                                Just ponder ->
+                                    case ponder of
+                                        Principle _ ->
+                                            text ""
+
+                                        _ ->
+                                            text " → "
+
+                                Nothing ->
+                                    text ""
+                            ]
                         ]
                    ]
     in
     List.indexedMap
         (\index item ->
             let
-                ( ponderHtml, whyHtml ) =
+                ( ponder, ponderHtml, whyHtml ) =
                     renderPonderAndWhy index (List.length thread.content) item
             in
-            renderSequence ponderHtml whyHtml
+            renderSequence ponder ponderHtml whyHtml
         )
         thread.content
         |> flattenList
@@ -312,7 +329,11 @@ principleView : Ponder -> Html Msg
 principleView ponder =
     case ponder of
         Principle principle ->
-            div [] [ text principle ]
+            span
+                [ Attr.class "flex flex-row justify-around " ]
+                [ text principle
+                , button [ onClick (DeletePrinciple ponder) ] [ text "×" ]
+                ]
 
         _ ->
             text ""
@@ -461,8 +482,65 @@ update msg model =
             in
             ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
 
-        RevokePrinciple _ ->
-            ( model, Cmd.none )
+        RevokePrinciple index ponder ->
+            let
+                newSequence : Sequence
+                newSequence =
+                    case ponder of
+                        Reason text ->
+                            ( ponder, Just text )
+
+                        Principle text ->
+                            ( Reason text, Just text )
+
+                        Empty ->
+                            ( ponder, Just "" )
+
+                -- update threadcontent with this sequence given the index
+                updatedThreadContent : ThreadContent
+                updatedThreadContent =
+                    case model.currentThread of
+                        Just currentThread ->
+                            List.indexedMap
+                                (\i item ->
+                                    if i == index then
+                                        Just newSequence
+
+                                    else
+                                        item
+                                )
+                                currentThread.content
+
+                        Nothing ->
+                            []
+
+                newCurrentThread : Maybe Thread
+                newCurrentThread =
+                    Maybe.map (\thread -> { thread | content = updatedThreadContent }) model.currentThread
+
+                updateThread : Thread -> Thread
+                updateThread thread =
+                    if index == thread.id then
+                        case newCurrentThread of
+                            Just x ->
+                                x
+
+                            Nothing ->
+                                thread
+
+                    else
+                        thread
+
+                newThreads : List Thread
+                newThreads =
+                    List.map updateThread model.threads
+
+                -- update thread with new thread content
+                newPrinciples : List Ponder
+                newPrinciples =
+                    List.filter (\x -> x /= ponder) model.principles
+            in
+            ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
 
         MakeSelectedNode index ->
             ( { model | currentNodeIdx = index }, Cmd.none )
@@ -566,6 +644,9 @@ update msg model =
                     List.map updateThread model.threads
             in
             ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
+
+        DeletePrinciple _ ->
+            Debug.todo "branch 'DeletePrinciple _' not implemented"
 
 
 
