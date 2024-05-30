@@ -27,7 +27,7 @@ import Maybe exposing (map, withDefault)
 
 ask_why_description : String
 ask_why_description =
-    "By asking a series of questions and reaching primitive principles, you can determine if whatever you are putting forward time and energy towards is a worthwhile investment."
+    "By asking a series of questions and reaching primitive principles, you can determine if whatever you are putting forward time and energy towards is a worthwhile investment. Privacy notice: This webpage simply stores data to your browser. Once loaded, everything runs locally in your browser. No data is sent back to the server."
 
 
 
@@ -39,9 +39,8 @@ type Msg
     | DeleteThread Int
     | MakePrinciple Int Ponder
     | RevokePrinciple Int Ponder
-    | DeletePrinciple Ponder
     | GiveReason Int String
-    | CreateNewSequence Thread
+    | CreateNewSequence Int Thread
     | MakeSelectedThread Thread
     | MakeSelectedNode Int
 
@@ -133,7 +132,7 @@ view model =
         , Attr.class "flex flex-col justify-center align-center mx-auto items-center h-full font-serif text-center w-4/5"
         ]
         [ span
-            [ Attr.class "font-semibold italic" ]
+            [ Attr.class "font-semibold italic text-2xl" ]
             [ text "ask why" ]
         , pre
             [ Attr.class "text-balance" ]
@@ -187,7 +186,12 @@ renderPonderAndWhy :
     -> Int
     -> Maybe ( Ponder, Maybe String )
     -> ( Maybe Ponder, Html Msg, Html Msg ) -- (Ponder output, Why output)
-renderPonderAndWhy index _ maybeSequence =
+renderPonderAndWhy index threadContentLength maybeSequence =
+    let
+        isLastNode : Bool
+        isLastNode =
+            threadContentLength - 1 == index
+    in
     case maybeSequence of
         Just ( ponder, why ) ->
             case ponder of
@@ -204,7 +208,11 @@ renderPonderAndWhy index _ maybeSequence =
                         , div
                             [ Attr.class "has-tooltip" ]
                             [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Make Principle" ]
-                            , button [ onClick (MakePrinciple index ponder) ] [ text "✦" ]
+                            , if isLastNode then
+                                button [ onClick (MakePrinciple index ponder) ] [ text "✦" ]
+
+                              else
+                                text ""
                             ]
                         ]
                     , case why of
@@ -255,15 +263,15 @@ renderPonderAndWhy index _ maybeSequence =
 threadContentView : Thread -> List (Html Msg)
 threadContentView thread =
     let
-        renderSequence : Maybe Ponder -> Html Msg -> Html Msg -> List (Html Msg)
-        renderSequence maybePonder ponderHtml whyHtml =
+        renderSequence : Int -> Maybe Ponder -> Html Msg -> Html Msg -> List (Html Msg)
+        renderSequence index maybePonder ponderHtml whyHtml =
             ponderHtml
                 :: whyHtml
                 :: [ div
                         [ Attr.class "has-tooltip" ]
                         [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Give Reason" ]
                         , span
-                            [ Attr.class "opacity-50 hover:opacity-100 cursor-pointer", onClick (CreateNewSequence thread) ]
+                            [ Attr.class "opacity-50 hover:opacity-100 cursor-pointer", onClick (CreateNewSequence index thread) ]
                             [ case maybePonder of
                                 Just ponder ->
                                     case ponder of
@@ -285,7 +293,7 @@ threadContentView thread =
                 ( ponder, ponderHtml, whyHtml ) =
                     renderPonderAndWhy index (List.length thread.content) item
             in
-            renderSequence ponder ponderHtml whyHtml
+            renderSequence index ponder ponderHtml whyHtml
         )
         thread.content
         |> flattenList
@@ -329,7 +337,28 @@ threadView thread isCurrent =
 
 principleListView : Model -> Html Msg
 principleListView model =
-    div [] (List.map principleView model.principles)
+    let
+        extractPrinciple : Sequence -> Maybe Ponder
+        extractPrinciple ( ponder, _ ) =
+            case ponder of
+                Principle _ ->
+                    Just ponder
+
+                _ ->
+                    Nothing
+
+        extractPrinciplesFromContent : ThreadContent -> List Ponder
+        extractPrinciplesFromContent content =
+            content
+                |> List.filterMap identity
+                |> List.filterMap extractPrinciple
+
+        extractAllPrinciples : Model -> List Ponder
+        extractAllPrinciples model2 =
+            model2.threads
+                |> List.concatMap (\thread -> extractPrinciplesFromContent thread.content)
+    in
+    div [] (List.map principleView (extractAllPrinciples model))
 
 
 principleView : Ponder -> Html Msg
@@ -339,7 +368,6 @@ principleView ponder =
             span
                 [ Attr.class "flex flex-row justify-around " ]
                 [ text principle
-                , button [ onClick (DeletePrinciple ponder) ] [ text "×" ]
                 ]
 
         _ ->
@@ -392,7 +420,7 @@ update msg model =
 
                 -- (Node { value = Why "Untitled", next = Nothing })
             in
-            ( { model | currentThread = Just newThread, threads = newThread :: model.threads }, Cmd.none )
+            ( { model | currentThread = Just newThread, threads = List.append model.threads [ newThread ] }, Cmd.none )
 
         DeleteThread threadToDeleteId ->
             let
@@ -467,37 +495,37 @@ update msg model =
 
                 updateThread : Thread -> Thread
                 updateThread thread =
-                    if index == thread.id then
-                        case newCurrentThread of
-                            Just x ->
-                                x
+                    case model.currentThread of
+                        Just currentThread ->
+                            if currentThread.id == thread.id then
+                                case newCurrentThread of
+                                    Just x ->
+                                        x
 
-                            Nothing ->
+                                    Nothing ->
+                                        thread
+
+                            else
                                 thread
 
-                    else
-                        thread
+                        Nothing ->
+                            thread
 
                 newThreads : List Thread
                 newThreads =
                     List.map updateThread model.threads
-
-                -- update thread with new thread content
-                newPrinciples : List Ponder
-                newPrinciples =
-                    List.append [ Tuple.first newSequence ] model.principles
             in
             case ponder of
                 Reason text ->
                     if text /= "" then
-                        ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
+                        ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
 
                     else
                         ( model, Cmd.none )
 
                 Principle text ->
                     if text /= "" then
-                        ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
+                        ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
 
                     else
                         ( model, Cmd.none )
@@ -543,27 +571,27 @@ update msg model =
 
                 updateThread : Thread -> Thread
                 updateThread thread =
-                    if index == thread.id then
-                        case newCurrentThread of
-                            Just x ->
-                                x
+                    case model.currentThread of
+                        Just currentThread ->
+                            if currentThread.id == thread.id then
+                                case newCurrentThread of
+                                    Just x ->
+                                        x
 
-                            Nothing ->
+                                    Nothing ->
+                                        thread
+
+                            else
                                 thread
 
-                    else
-                        thread
+                        Nothing ->
+                            thread
 
                 newThreads : List Thread
                 newThreads =
                     List.map updateThread model.threads
-
-                -- update thread with new thread content
-                newPrinciples : List Ponder
-                newPrinciples =
-                    List.filter (\x -> x /= ponder) model.principles
             in
-            ( { model | currentThread = newCurrentThread, threads = newThreads, principles = newPrinciples }, Cmd.none )
+            ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
 
         MakeSelectedNode index ->
             ( { model | currentNodeIdx = index }, Cmd.none )
@@ -571,7 +599,7 @@ update msg model =
         MakeSelectedThread thread ->
             ( { model | currentThread = Just thread }, Cmd.none )
 
-        CreateNewSequence currentThread ->
+        CreateNewSequence index currentThread ->
             let
                 newList : ThreadContent
                 newList =
@@ -598,7 +626,11 @@ update msg model =
                 newThreads =
                     List.map updateThread model.threads
             in
-            ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
+            if index == (List.length currentThread.content - 1) then
+                ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
+
+            else
+                ( model, Cmd.none )
 
         GiveReason index reasonText ->
             let
@@ -685,9 +717,6 @@ update msg model =
                     List.map updateThread model.threads
             in
             ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
-
-        DeletePrinciple _ ->
-            ( model, Cmd.none )
 
 
 
@@ -848,6 +877,7 @@ decodeModel =
 last : List a -> Maybe a
 last list =
     list
+        |> List.reverse
         |> List.head
 
 
