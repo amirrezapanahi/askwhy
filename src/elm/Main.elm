@@ -2,18 +2,20 @@ port module Main exposing (Model, Msg(..), initialModel, main)
 
 import Accessibility.Aria as Aria
 import Browser
+import Browser.Navigation as Nav
 import Html
     exposing
         ( Html
         , button
         , div
+        , img
         , input
         , main_
         , pre
         , span
         , text
         )
-import Html.Attributes as Attr
+import Html.Attributes as Attr exposing (src)
 import Html.Events exposing (onClick, onFocus, onInput)
 import Json.Decode
 import Json.Encode
@@ -43,6 +45,7 @@ type Msg
     | CreateNewSequence Int Thread
     | MakeSelectedThread Thread
     | MakeSelectedNode Int
+    | GithubRepoRedirect
 
 
 
@@ -125,6 +128,11 @@ main =
 -- VIEW
 
 
+githubImage : String
+githubImage =
+    "https://github.githubassets.com/assets/GitHub-Mark-ea2971cee799.png"
+
+
 view : Model -> Html Msg
 view model =
     main_
@@ -133,7 +141,10 @@ view model =
         ]
         [ span
             [ Attr.class "font-semibold italic text-2xl" ]
-            [ text "ask why" ]
+            [ div
+                [ Attr.class "flex" ]
+                [ text "ask why", img [ Attr.class "w-8 cursor-pointer", src githubImage, onClick GithubRepoRedirect ] [] ]
+            ]
         , pre
             [ Attr.class "text-balance" ]
             [ text ask_why_description ]
@@ -717,6 +728,9 @@ update msg model =
                     List.map updateThread model.threads
             in
             ( { model | currentThread = newCurrentThread, threads = newThreads }, Cmd.none )
+
+        GithubRepoRedirect ->
+            ( model, Nav.load "https://github.com/amirrezapanahi/askwhy" )
 
 
 
