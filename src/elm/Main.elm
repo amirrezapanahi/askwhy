@@ -10,10 +10,12 @@ import Html
         , div
         , img
         , input
+        , li
         , main_
         , pre
         , span
         , text
+        , ul
         )
 import Html.Attributes as Attr exposing (src)
 import Html.Events exposing (onClick, onFocus, onInput)
@@ -29,7 +31,7 @@ import Maybe exposing (map, withDefault)
 
 ask_why_description : String
 ask_why_description =
-    "By asking a series of questions and reaching primitive principles, you can determine if whatever you are putting forward time and energy towards is a worthwhile investment. Privacy notice: This webpage simply stores data to your browser. Once loaded, everything runs locally in your browser. No data is sent back to the server."
+    "By asking a series of questions and reaching primitive principles, you can determine if whatever you are putting forward time and energy towards is a worthwhile investment. "
 
 
 
@@ -137,7 +139,7 @@ view : Model -> Html Msg
 view model =
     main_
         [ Aria.label "main content"
-        , Attr.class "flex flex-col justify-center align-center mx-auto items-center h-full font-serif text-center w-4/5"
+        , Attr.class "flex flex-col gap-4 p-4 justify-center align-center mx-auto items-center h-full font-serif text-center md:w-4/5"
         ]
         [ span
             [ Attr.class "font-semibold italic text-2xl" ]
@@ -148,10 +150,10 @@ view model =
         , pre
             [ Attr.class "text-balance" ]
             [ text ask_why_description ]
-        , div [ Attr.class "flex flex-row w-full" ]
-            [ div [ Attr.class "h-full bg-red-200 w-1/5 " ]
+        , div [ Attr.class "flex flex-col md:flex-row w-full" ]
+            [ div [ Attr.class "w-full md:w-1/5 h-full w-1/5 " ]
                 [ div
-                    [ Attr.class "flex flex-row justify-around" ]
+                    [ Attr.class "flex flex-row bg-red-100 rounded justify-between p-4" ]
                     [ span
                         []
                         [ text "Threads" ]
@@ -159,15 +161,25 @@ view model =
                         [ onClick CreateThread ]
                         [ text "+" ]
                     ]
-                , threadListView model
+                , threadListView model.threads model.currentThread
                 ]
-            , div [ Attr.class ("h-full w-3/5 " ++ threadSpacingStyle) ]
-                [ span [ Attr.class ("bg-green-200 " ++ titleStyles) ] [ text "Current Thread" ]
+            , div [ Attr.class ("h-full w-full order-last md:order-none md:p-0 md:w-3/5 sm:mx-auto" ++ threadSpacingStyle) ]
+                [ div
+                    [ Attr.class "flex flex-row bg-green-100 rounded justify-between p-4" ]
+                    [ span
+                        []
+                        [ text "Current Thread" ]
+                    ]
                 , currentThreadView model.currentThread
                 ]
-            , div [ Attr.class "h-full bg-blue-100 w-1/5" ]
-                [ span [ Attr.class titleStyles ] [ text "Principles" ]
-                , principleListView model
+            , div [ Attr.class "h-full w-full md:w-1/5 w-1/5" ]
+                [ div
+                    [ Attr.class "flex flex-row bg-blue-100 rounded justify-between p-4" ]
+                    [ span
+                        []
+                        [ text "Principles" ]
+                    ]
+                , principleListView model.threads
                 ]
             ]
         ]
@@ -178,7 +190,7 @@ currentThreadView maybeThread =
     case maybeThread of
         Just thread ->
             div [ Attr.class threadSpacingStyle ]
-                [ div [ Attr.class "grid grid-cols-[1fr_auto_1fr]" ]
+                [ div [ Attr.class "grid grid-cols-[1fr_auto_1fr] my-4" ]
                     ([ span
                         [ Attr.class "text-right italic" ]
                         [ text "Start here:" ]
@@ -218,7 +230,7 @@ renderPonderAndWhy index threadContentLength maybeSequence =
                             []
                         , div
                             [ Attr.class "has-tooltip" ]
-                            [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Make Principle" ]
+                            [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8 whitespace-nowrap" ] [ text "Make Principle" ]
                             , if isLastNode then
                                 button [ onClick (MakePrinciple index ponder) ] [ text "✦" ]
 
@@ -260,7 +272,7 @@ renderPonderAndWhy index threadContentLength maybeSequence =
                             []
                         , div
                             [ Attr.class "has-tooltip" ]
-                            [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 -mt-8" ] [ text "Revoke Principle" ]
+                            [ span [ Attr.class "tooltip rounded shadow-lg p-1 bg-gray-100 text-black-500 whitespace-nowrap mt-8" ] [ text "Revoke Principle" ]
                             , button [ onClick (RevokePrinciple index ponder) ] [ text "↩" ]
                             ]
                         ]
@@ -310,13 +322,13 @@ threadContentView thread =
         |> flattenList
 
 
-threadListView : Model -> Html Msg
-threadListView model =
+threadListView : List Thread -> Maybe Thread -> Html Msg
+threadListView threads currentThread =
     div []
         (List.map
             (\thread ->
                 threadView thread
-                    (case model.currentThread of
+                    (case currentThread of
                         Just current_thread ->
                             current_thread.id == thread.id
 
@@ -324,20 +336,20 @@ threadListView model =
                             False
                     )
             )
-            model.threads
+            threads
         )
 
 
 threadView : Thread -> Bool -> Html Msg
 threadView thread isCurrent =
-    div [ Attr.class "flex flex-row justify-around" ]
+    div [ Attr.class "flex flex-row justify-between p-4" ]
         [ span
             [ Attr.class
                 (if isCurrent then
-                    "bg-slate-100 rounded"
+                    "bg-slate-100 rounded text-left"
 
                  else
-                    ""
+                    "text-left"
                 )
             , onClick (MakeSelectedThread thread)
             ]
@@ -346,8 +358,8 @@ threadView thread isCurrent =
         ]
 
 
-principleListView : Model -> Html Msg
-principleListView model =
+principleListView : List Thread -> Html Msg
+principleListView threads =
     let
         extractPrinciple : Sequence -> Maybe Ponder
         extractPrinciple ( ponder, _ ) =
@@ -364,20 +376,20 @@ principleListView model =
                 |> List.filterMap identity
                 |> List.filterMap extractPrinciple
 
-        extractAllPrinciples : Model -> List Ponder
-        extractAllPrinciples model2 =
-            model2.threads
+        extractAllPrinciples : List Thread -> List Ponder
+        extractAllPrinciples threads2 =
+            threads2
                 |> List.concatMap (\thread -> extractPrinciplesFromContent thread.content)
     in
-    div [] (List.map principleView (extractAllPrinciples model))
+    ul [] (List.map principleView (extractAllPrinciples threads))
 
 
 principleView : Ponder -> Html Msg
 principleView ponder =
     case ponder of
         Principle principle ->
-            span
-                [ Attr.class "flex flex-row justify-around " ]
+            li
+                [ Attr.class "flex flex-row justify-between p-4 text-left " ]
                 [ text principle
                 ]
 
@@ -388,11 +400,13 @@ principleView ponder =
 renderWhy : String -> Html Msg
 renderWhy why_text =
     div [ Attr.class "flex font-bold" ]
-        [ span [] [ text "Why" ]
-        , span
-            [ Attr.class "italic font-light" ]
-            [ text why_text ]
-        , span [] [ text "?" ]
+        [ span []
+            [ text "Why "
+            , span
+                [ Attr.class "italic font-light" ]
+                [ text why_text ]
+            , span [] [ text " ?" ]
+            ]
         ]
 
 
